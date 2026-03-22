@@ -69,7 +69,12 @@ echo "✓ Baassüsteem paigaldatud"
 
 # --- 4. fstab ---
 echo "--- fstab ---"
-genfstab -U "$MOUNT" >> "$MOUNT/etc/fstab"
+if grep -q "subvol=" "$MOUNT/etc/fstab" 2>/dev/null; then
+    echo "⚠ fstab sisaldab juba subvol kirjeid — jätan vahele"
+    echo "  Kui tahad uuesti genereerida: > $MOUNT/etc/fstab && genfstab -U $MOUNT >> $MOUNT/etc/fstab"
+else
+    genfstab -U "$MOUNT" >> "$MOUNT/etc/fstab"
+fi
 
 echo "✓ fstab genereeritud"
 echo ""
