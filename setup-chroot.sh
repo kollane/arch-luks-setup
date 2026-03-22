@@ -51,11 +51,15 @@ fi
 
 echo ""
 echo ">>> Sisesta ROOT parool:"
-passwd
+until passwd; do
+    echo "Parool ei sobinud, proovi uuesti:"
+done
 
 echo ""
 echo ">>> Sisesta $USERNAME parool:"
-passwd "$USERNAME"
+until passwd "$USERNAME"; do
+    echo "Parool ei sobinud, proovi uuesti:"
+done
 
 # sudo — muuda ja valideeri
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
