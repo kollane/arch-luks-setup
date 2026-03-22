@@ -2,8 +2,11 @@
 set -e
 
 # Arch Linux chroot seadistamine LUKS + btrfs paigalduseks
-# Kasutus: curl -sL https://raw.githubusercontent.com/kollane/arch-luks-setup/main/setup-chroot.sh | bash
+# Kasutus: bash <(curl -sL https://raw.githubusercontent.com/kollane/arch-luks-setup/master/setup-chroot.sh)
 # Käivita arch-chroot'is pärast pacstrap'i ja genfstab'i
+#
+# NB: Kasuta bash <(...) süntaksit, MITTE curl | bash,
+# sest passwd vajab terminali sisendit!
 
 # Seadistused
 LUKS_PART="/dev/nvme0n1p2"
@@ -19,14 +22,14 @@ echo ""
 
 # --- 1. Ajavöönd ---
 echo "--- Ajavöönd ---"
-ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
 hwclock --systohc
 echo "✓ Ajavöönd: $TIMEZONE"
 
 # --- 2. Keel ---
 echo "--- Keel ---"
-echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-echo "et_EE.UTF-8 UTF-8" >> /etc/locale.gen
+grep -q "^en_US.UTF-8 UTF-8" /etc/locale.gen || echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+grep -q "^et_EE.UTF-8 UTF-8" /etc/locale.gen || echo "et_EE.UTF-8 UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 echo "KEYMAP=us" > /etc/vconsole.conf
@@ -54,14 +57,28 @@ echo ""
 echo ">>> Sisesta $USERNAME parool:"
 passwd "$USERNAME"
 
-# sudo
+# sudo — muuda ja valideeri
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
-echo "✓ sudo lubatud wheel grupile"
+if visudo -c &>/dev/null; then
+    echo "✓ sudo lubatud wheel grupile"
+else
+    echo "VIGA: /etc/sudoers on vigane!"
+    echo "Käivita käsitsi: EDITOR=nano visudo"
+    exit 1
+fi
 
 # --- 5. mkinitcpio ---
 echo "--- mkinitcpio ---"
 sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)/' /etc/mkinitcpio.conf
-echo "✓ encrypt hook lisatud"
+
+# Kontrolli et encrypt on olemas
+if grep -q "block encrypt filesystems" /etc/mkinitcpio.conf; then
+    echo "✓ encrypt hook lisatud"
+else
+    echo "VIGA: encrypt hook puudub! Kontrolli /etc/mkinitcpio.conf"
+    exit 1
+fi
+
 mkinitcpio -P
 
 # --- 6. GRUB ---
@@ -69,12 +86,15 @@ echo "--- GRUB ---"
 UUID=$(blkid -s UUID -o value "$LUKS_PART")
 if [ -z "$UUID" ]; then
     echo "VIGA: Ei leidnud UUID-d partitsioonilt $LUKS_PART"
-    echo "Käivita käsitsi: bash setup-grub-luks.sh $LUKS_PART"
+    echo "Käivita käsitsi: blkid $LUKS_PART"
     exit 1
 fi
 
 echo "LUKS UUID: $UUID"
 sed -i "s|^GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX=\"cryptdevice=UUID=${UUID}:cryptroot root=/dev/mapper/cryptroot rootfstype=btrfs zswap.enabled=0\"|" /etc/default/grub
+
+echo "Kontroll:"
+grep "^GRUB_CMDLINE_LINUX=" /etc/default/grub
 
 grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 grub-mkconfig -o /boot/grub/grub.cfg
